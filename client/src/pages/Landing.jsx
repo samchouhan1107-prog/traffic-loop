@@ -1,6 +1,34 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../services/api.js';
+import { trackEvent } from '../services/ga4.js';
+
+/** Regions shown only as selectable options; verification results are
+ *  driven by real egress telemetry, never assumed from this list. */
+const REGIONS = ['IN', 'AU', 'KR', 'SG', 'JP', 'MY', 'US', 'GB', 'DE'];
+
+const STREAK_REWARDS = [
+  { day: 'Day 1', reward: 'Free allocation' },
+  { day: 'Day 2', reward: 'Additional allocation' },
+  { day: 'Day 3', reward: 'Additional allocation' },
+  { day: 'Day 7', reward: 'Streak bonus' },
+];
+
+const HOW_IT_WORKS = [
+  { step: '01', title: 'Enter your URL' },
+  { step: '02', title: 'Choose your region' },
+  { step: '03', title: 'Run the check' },
+  { step: '04', title: 'Monitor live results' },
+];
+
+const TRANSPARENCY = [
+  'No fake analytics',
+  'No fabricated visitor counts',
+  'No fake country detection',
+  'No fake verification',
+  'Real HTTP telemetry only',
+  'Transparent, separate counters',
+];
 
 /**
  * Landing page with FREE PROMO flow.
@@ -23,6 +51,8 @@ export default function Landing({ user }) {
     setError('');
     setVerifying(true);
     setVerification(null);
+    // Real user interaction: a genuine form submission by a person.
+    trackEvent('free_check_submitted', { country_count: countries.split(',').filter(Boolean).length });
     try {
       const result = await api('/api/promo/verify', { method: 'POST', body: { url: url.trim() } });
       setVerification(result);
@@ -42,6 +72,7 @@ export default function Landing({ user }) {
     }
     setError('');
     setStarting(true);
+    trackEvent('promo_started', { country_count: countries.split(',').filter(Boolean).length });
     try {
       const result = await api('/api/promo/start', {
         method: 'POST',
@@ -96,40 +127,22 @@ export default function Landing({ user }) {
 
   return (
     <div className="landing">
-      <div className="landing-hero">
+      {/* ===================== HERO ===================== */}
+      <header className="landing-hero">
         <div className="brand-icon">🚦</div>
-        <h1>Traffic Loop</h1>
+        <h1>Monitor. Reach. Measure.</h1>
         <p className="subtitle">
-          Honest multi-country traffic probing with failure-point monitoring.
-          <br />Every result is real. No fabrication. No fake visitors.
+          Website monitoring, regional reach and transparent performance
+          telemetry. Every result is real — no fake visitors, no fabricated numbers.
         </p>
-      </div>
+      </header>
 
-      {/* Features */}
-      <div className="features">
-        <div className="feature">
-          <h3>🎯 Real Execution</h3>
-          <p>Every campaign action is traced through a 10-stage diagnostic pipeline.</p>
-        </div>
-        <div className="feature">
-          <h3>🔍 Failure-Point Monitoring</h3>
-          <p>If something fails, we show exactly where — never hide it.</p>
-        </div>
-        <div className="feature">
-          <h3>🆓 Free Promo</h3>
-          <p>Get up to 10,000 exposure slots free. Real traffic, real results.</p>
-        </div>
-        <div className="feature">
-          <h3>🔥 Login Streak</h3>
-          <p>Earn bonus allocations by returning daily. Streak rewards grow!</p>
-        </div>
-      </div>
-
-      {/* FREE PROMO FORM */}
-      <div className="promo-form-container">
+      <main>
+      {/* ============ FREE CHECK FORM (hero input) ============ */}
+      <section className="promo-form-container" aria-labelledby="free-check-title">
         <div className="promo-form-header">
-          <h2>FREE PROMO</h2>
-          <p className="muted">Submit your URL and get real traffic — completely free.</p>
+          <h2 id="free-check-title">FREE PROMO</h2>
+          <p className="muted">Start with a free promotional allocation — up to 10,000 eligible exposures.</p>
         </div>
 
         <form onSubmit={handleVerify} className="promo-form">
@@ -147,18 +160,21 @@ export default function Landing({ user }) {
 
           <label className="promo-input-group">
             <span className="promo-label">Country/Region</span>
-            <input
-              type="text"
-              placeholder="US (or comma-separated: US,GB,DE)"
-              value={countries}
-              onChange={(e) => setCountries(e.target.value)}
+            <select
+              multiple
+              value={countries.split(',')}
+              onChange={(e) => setCountries(Array.from(e.target.selectedOptions, o => o.value).join(','))}
               className="promo-country-input"
-            />
+              aria-describedby="regions-note"
+            >
+              {REGIONS.map(code => <option key={code} value={code}>{code}</option>)}
+            </select>
+            <span id="regions-note" className="muted">Hold Ctrl/Cmd to pick multiple regions. Results reflect only what telemetry verifies.</span>
           </label>
 
           <div className="promo-actions">
             <button type="submit" className="btn btn-primary promo-verify-btn" disabled={verifying}>
-              {verifying ? 'Verifying…' : 'FREE PROMO'}
+              {verifying ? 'Verifying…' : 'Start Free Check'}
             </button>
           </div>
         </form>
@@ -196,7 +212,99 @@ export default function Landing({ user }) {
             )}
           </div>
         )}
-      </div>
+      </section>
+
+      {/* ============ LIVE WEBSITE CHECK — TELEMETRY LABEL ============ */}
+      <section className="features" aria-label="What we measure">
+        <div className="feature">
+          <h3>🔗 HTTP Status</h3>
+          <p>Real status codes returned by your server during automated checks.</p>
+        </div>
+        <div className="feature">
+          <h3>⏱ Response Time</h3>
+          <p>Measured round-trip time of each automated HTTP probe.</p>
+        </div>
+        <div className="feature">
+          <h3>✅ Availability</h3>
+          <p>Share of checks that returned a successful response.</p>
+        </div>
+        <div className="feature">
+          <h3>🕒 Last Checked</h3>
+          <p>Timestamp of the most recent automated check — clearly labeled telemetry, never presented as human visits.</p>
+        </div>
+      </section>
+
+      {/* ============ FREE PROMO EXPLANATION ============ */}
+      <section className="trust-section" aria-labelledby="promo-explain-title">
+        <h2 id="promo-explain-title">Start with a free promotional allocation</h2>
+        <p>
+          New campaigns begin with <strong>up to 10,000 eligible exposures</strong>. This is the
+          maximum allocation — <strong>not a guaranteed visitor count</strong>. Actual qualifying
+          events are counted only when genuinely observed by real HTTP telemetry and
+          (if configured) GA4 measurement on your own property.
+        </p>
+      </section>
+
+      {/* ============ LOGIN STREAK ============ */}
+      <section className="features" aria-labelledby="streak-title">
+        <h2 id="streak-title" className="section-title">🔥 Login Streak</h2>
+        <p className="muted">Reward schedule (configurable from the backend):</p>
+        <div className="feature">
+          {STREAK_REWARDS.map(r => (
+            <p key={r.day}><strong>{r.day}</strong> → {r.reward}</p>
+          ))}
+        </div>
+      </section>
+
+      {/* ============ REGIONAL REACH ============ */}
+      <section className="features" aria-labelledby="regions-title">
+        <h2 id="regions-title" className="section-title">🌍 Regional Reach</h2>
+        <p className="muted">A location is displayed only when telemetry genuinely verifies it.</p>
+        <div className="feature">
+          <p>{REGIONS.join(' · ')}</p>
+        </div>
+      </section>
+
+      {/* ============ TRANSPARENT ANALYTICS ============ */}
+      <section className="features" aria-labelledby="analytics-title">
+        <h2 id="analytics-title" className="section-title">📊 Transparent Analytics</h2>
+        <p className="muted">Separate, honest counters — never merged into one artificial “visitor” number.</p>
+        <div className="feature">
+          <ul>
+            <li>Requests</li>
+            <li>Successful responses</li>
+            <li>Failed responses</li>
+            <li>Page views</li>
+            <li>Sessions</li>
+            <li>Verified user activity</li>
+          </ul>
+        </div>
+      </section>
+
+      {/* ============ HOW IT WORKS ============ */}
+      <section className="features" aria-labelledby="how-title">
+        <h2 id="how-title" className="section-title">How It Works</h2>
+        {HOW_IT_WORKS.map(h => (
+          <div key={h.step} className="feature">
+            <h3>{h.step}</h3>
+            <p>{h.title}</p>
+          </div>
+        ))}
+      </section>
+
+      {/* ============ TRUST / SAFETY ============ */}
+      <section className="trust-section" aria-labelledby="trust-title">
+        <h2 id="trust-title">Trust &amp; Safety</h2>
+        <ul>
+          {TRANSPARENCY.map(t => <li key={t}>{t}</li>)}
+        </ul>
+      </section>
+
+      {/* ============ CTA ============ */}
+      <section className="cta-section" aria-labelledby="cta-title">
+        <h2 id="cta-title">Ready to check your website?</h2>
+        <a href="#free-check-title" className="btn btn-primary">Start Free Check</a>
+      </section>
 
       {/* Auth links */}
       <div className="landing-auth">
@@ -209,6 +317,21 @@ export default function Landing({ user }) {
           </div>
         )}
       </div>
+      </main>
+
+      {/* ============ FOOTER ============ */}
+      <footer className="landing-footer">
+        <nav aria-label="Footer">
+          <Link to="/">About</Link>
+          <Link to="/">How it works</Link>
+          <Link to="/">Analytics</Link>
+          <Link to="/">Reports</Link>
+          <Link to="/">Privacy</Link>
+          <Link to="/">Terms</Link>
+          <Link to="/">Contact</Link>
+        </nav>
+        <p className="muted">© {new Date().getFullYear()} Traffic Loop — honest monitoring &amp; telemetry.</p>
+      </footer>
     </div>
   );
 }

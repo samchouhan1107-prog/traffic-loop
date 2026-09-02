@@ -1,36 +1,44 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <title>Traffic Loop — redirecting…</title>
-    <script>
-      // GitHub Pages project-site SPA fallback.
-      // Deep links (e.g. /traffic-loop/dashboard) land here because Pages
-      // cannot serve index.html for arbitrary paths. We convert the path
-      // to a query so a static file can serve it, e.g.:
-      //   /traffic-loop/dashboard          -> /traffic-loop/?/dashboard
-      //   /traffic-loop/campaigns/42       -> /traffic-loop/?/campaigns/42
-      // main.jsx then restores the real path with history.replaceState
-      // before React Router mounts, so all routes work transparently.
-      (function () {
-        var l = window.location;
-        // On a project site the URL looks like /<repo>/<route>. Rebuild it
-        // as /<repo>/?/<route> so the static index.html can be served.
-        var segments = l.pathname.split('/');            // ["", "<repo>", ...route]
-        var repo = segments[1] || '';
-        var route = segments.slice(2).join('/');          // e.g. "dashboard"
-        var target =
-          l.origin + '/' + repo + '/?' +
-          (route ? '/' + route : '') +
-          l.hash;
-        l.replace(target);
-      })();
-    </script>
-    <style>
-      body { font-family: system-ui, sans-serif; background: #0b0d12; color: #e6e9f2; padding: 2rem; }
-    </style>
-  </head>
-  <body>
-    <p>Loading Traffic Loop…</p>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Traffic Loop — redirecting…</title>
+  <script>
+    // GitHub Pages project-site SPA fallback.
+    // Deep links (e.g. /traffic-loop/dashboard) land here because Pages
+    // cannot serve index.html for arbitrary paths. We convert the path
+    // to a query so a static file can serve it, e.g.:
+    //   /traffic-loop/dashboard          -> /traffic-loop/?/dashboard
+    //   /traffic-loop/campaigns/42       -> /traffic-loop/?/campaigns/42
+    // main.jsx then restores the real path with history.replaceState
+    // before React Router mounts, so all routes work transparently.
+    (function () {
+      var l = window.location;
+      // On a project site the URL looks like /<repo>/<route>. Rebuild it
+      // as /<repo>/?/<route> so the static index.html can be served.
+      var segments = l.pathname.split('/');            // ["", "<repo>", ...route]
+      var repo = segments[1] || '';
+      var route = segments.slice(2).join('/');          // e.g. "dashboard"
+      var target =
+        l.origin + '/' + repo + '/?' +
+        (route ? '/' + route : '') +
+        l.hash;
+      l.replace(target);
+    })();
+  </script>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0b0d12;
+      color: #e6e9f2;
+      padding: 2rem;
+    }
+  </style>
+</head>
+
+<body>
+  <p>Loading Traffic Loop…</p>
+</body>
+
 </html>

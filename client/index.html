@@ -1,55 +1,73 @@
 <!doctype html>
 <html lang="en" dir="ltr">
-  <head>
-    <!-- Character encoding must be declared before any other content -->
-    <meta charset="UTF-8" />
 
-    <!-- Viewport: viewport-fit=cover supports notched/safe-area devices -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<head>
+  <!-- Basic document configuration -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0b0d12" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+  <meta name="author" content="Traffic Loop" />
 
-    <!-- Theme & color-scheme: keeps browser chrome, form controls and
-         scrollbars consistent with the dark app theme (#0b0d12) -->
-    <meta name="theme-color" content="#0b0d12" />
-    <meta name="color-scheme" content="dark" />
+  <!-- Primary SEO -->
+  <title>Traffic Loop — Website Monitoring &amp; Promotional Exposure</title>
+  <meta name="description"
+    content="Traffic Loop helps website owners monitor URL availability, measure response performance, understand regional reach, and manage promotional exposure with transparent telemetry." />
+  <meta name="keywords"
+    content="website monitoring, URL monitoring, website performance, regional monitoring, traffic analytics, website telemetry, uptime monitoring, Traffic Loop" />
+  <!-- canonical/og:url intentionally omitted rather than hardcoded to a
+       wrong absolute URL; Vite `base` controls asset paths for Pages. -->
 
-    <!-- Favicon (relative to Vite `base` so it resolves on GitHub Pages) -->
-    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
 
-    <!-- SEO metadata -->
-    <title>Traffic Loop</title>
-    <meta
-      name="description"
-      content="Traffic Loop — honest multi-country traffic probing with failure-point monitoring."
-    />
+  <!-- Open Graph -->
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Traffic Loop" />
+  <meta property="og:title" content="Traffic Loop — Website Monitoring &amp; Promotional Exposure" />
+  <meta property="og:description"
+    content="Monitor website availability, regional reach and performance with transparent Traffic Loop telemetry." />
+  <!-- No og:image yet: the social preview asset does not exist. Add
+       traffic-loop-social-preview.png and this tag together, later. -->
 
-    <!-- Open Graph (social sharing) -->
-    <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="Traffic Loop" />
-    <meta property="og:title" content="Traffic Loop" />
-    <meta
-      property="og:description"
-      content="Honest multi-country traffic probing with failure-point monitoring."
-    />
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Traffic Loop — Website Monitoring &amp; Promotional Exposure" />
+  <meta name="twitter:description"
+    content="Monitor website availability, regional reach and performance with transparent Traffic Loop telemetry." />
 
-    <!-- Twitter card -->
-    <meta name="twitter:card" content="summary" />
-    <meta name="twitter:title" content="Traffic Loop" />
-    <meta
-      name="twitter:description"
-      content="Honest multi-country traffic probing with failure-point monitoring."
-    />
-  </head>
-  <body>
-    <!-- React root: the single mount point (see src/main.jsx) -->
-    <div id="root"></div>
+  <!-- Structured data -->
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Traffic Loop",
+      "applicationCategory": "BusinessApplication",
+      "operatingSystem": "Web",
+      "description": "Website monitoring and transparent promotional exposure platform with regional telemetry.",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+    }
+  </script>
+</head>
 
-    <!-- Graceful fallback if JavaScript is disabled -->
-    <noscript>
-      <p style="font-family: system-ui, sans-serif; padding: 2rem; color: #e6e9f2;">
-        Traffic Loop requires JavaScript. Please enable it and reload the page.
-      </p>
-    </noscript>
+<body>
+  <div id="root"></div>
 
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+  <noscript>
+    <main
+      style="min-height:100vh;display:grid;place-items:center;padding:32px;background:#0b0d12;color:#e6e9f2;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+      <section
+        style="width:min(620px,100%);padding:32px;border:1px solid #252a35;border-radius:20px;background:#11141b;">
+        <h1 style="margin-top:0;">Traffic Loop</h1>
+        <p>Website monitoring, regional reach and transparent performance telemetry.</p>
+        <p>JavaScript is required to use the Traffic Loop application. Please enable JavaScript and reload this page.</p>
+      </section>
+    </main>
+  </noscript>
+
+  <!-- Vite resolves this and rewrites it with the configured `base` -->
+  <script type="module" src="./src/main.jsx"></script>
+</body>
+
 </html>
