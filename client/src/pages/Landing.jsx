@@ -30,6 +30,23 @@ const TRANSPARENCY = [
   'Transparent, separate counters',
 ];
 
+const HTTP_STATUS_HINTS = {
+  301: 'moved permanently',
+  308: 'moved permanently',
+  400: 'bad request',
+  401: 'authentication required',
+  403: 'access forbidden (the server may be blocking automated checks)',
+  404: 'page not found',
+  405: 'method not allowed',
+  408: 'request timeout',
+  410: 'page gone',
+  429: 'too many requests (rate limited)',
+  500: 'internal server error',
+  502: 'bad gateway',
+  503: 'service unavailable',
+  504: 'gateway timeout',
+};
+
 /**
  * Landing page with FREE PROMO flow.
  * Flow: Landing → Enter URL → Lightweight verification → Free Promo → Live Results → Login/Signup
@@ -206,8 +223,21 @@ export default function Landing({ user }) {
               </div>
             ) : (
               <div className="verification-details">
-                <p className="error">{verification.error || 'URL could not be reached'}</p>
-                <p className="muted">Please check the URL and try again.</p>
+                <p className="error">
+                  {verification.error
+                    || (verification.httpStatus
+                      ? `Your server responded with HTTP ${verification.httpStatus} — ${HTTP_STATUS_HINTS[verification.httpStatus] || 'the URL did not return a successful response'}`
+                      : 'URL could not be reached')}
+                </p>
+                {verification.httpStatus === 404 && (
+                  <p className="muted">HTTP 404 means “page not found”. Double-check the exact path (e.g. https://example.com/ vs https://example.com/page) — the site may be up, but that specific URL does not exist.</p>
+                )}
+                {verification.httpStatus >= 500 && verification.httpStatus < 600 && (
+                  <p className="muted">A 5xx status means your server had an internal error while responding. Check your server logs and try again.</p>
+                )}
+                {!verification.httpStatus && !verification.error && (
+                  <p className="muted">Please check the URL and try again.</p>
+                )}
               </div>
             )}
           </div>

@@ -14,13 +14,15 @@
   <title>Traffic Loop — Website Monitoring &amp; Promotional Exposure</title>
   <meta name="description"
     content="Traffic Loop helps website owners monitor URL availability, measure response performance, understand regional reach, and manage promotional exposure with transparent telemetry." />
-  <meta name="keywords"
-    content="website monitoring, URL monitoring, website performance, regional monitoring, traffic analytics, website telemetry, uptime monitoring, Traffic Loop" />
-  <!-- canonical/og:url intentionally omitted rather than hardcoded to a
-       wrong absolute URL; Vite `base` controls asset paths for Pages. -->
+  <!-- canonical / og:url: add when the real production domain is known.
+       Example: <link rel="canonical" href="https://trafficloop.example.com/" />
+                <meta property="og:url" content="https://trafficloop.example.com/" />
+       Vite `base` controls asset paths; it does NOT set the page canonical. -->
 
   <!-- Favicon -->
-  <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+  <!-- Absolute path required: Vite rewrites <script> and <link rel="stylesheet">
+       but NOT <link rel="icon">. Must match vite.config.js `base`. -->
+  <link rel="icon" type="image/svg+xml" href="/traffic-loop/favicon.svg" />
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />

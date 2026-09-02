@@ -159,15 +159,21 @@ export async function verifyUrl(url) {
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), config.promo.healthCheckTimeoutMs);
-    const res = await fetch(cleanUrl, {
-      method: 'HEAD',
-      redirect: 'follow',
-      signal: controller.signal,
-      headers: { 'User-Agent': 'TrafficLoop-Verify/1.0' },
+    const headers = { 'User-Agent': 'TrafficLoop-Verify/1.0' };
+    let res = await fetch(cleanUrl, {
+      method: 'HEAD', redirect: 'follow', signal: controller.signal, headers,
     });
+    // Many servers (static hosts, SPA servers) don't answer HEAD properly and
+    // reply 404/405/403/501 even though the page is reachable via GET. Retry
+    // once with GET so we don't report a false failure.
+    if ([404, 405, 403, 501].includes(res.status)) {
+      res = await fetch(cleanUrl, {
+        method: 'GET', redirect: 'follow', signal: controller.signal, headers,
+      });
+    }
     clearTimeout(timeout);
 
-    const isHealthy = res.status >= 200 && res.status < 500;
+    const isHealthy = res.status >= 200 && res.status < 400;
     db.prepare(`INSERT INTO promo_url_health (url, last_checked_at, is_healthy, http_status, error_message)
       VALUES (?, datetime('now'), ?, ?, NULL)
       ON CONFLICT(url) DO UPDATE SET last_checked_at = datetime('now'), is_healthy = excluded.is_healthy,

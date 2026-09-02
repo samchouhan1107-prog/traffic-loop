@@ -22,21 +22,45 @@ export const ERR = Object.freeze({
 });
 
 export const STAGE = Object.freeze({
-  COMMAND_RECEIVED: 'COMMAND_RECEIVED', CAMPAIGN_CREATED: 'CAMPAIGN_CREATED',
-  CONFIG_VALIDATED: 'CONFIG_VALIDATED', GROUP_RESOLVED: 'GROUP_RESOLVED',
-  COUNTRIES_ASSIGNED: 'COUNTRIES_ASSIGNED', EGRESS_REQUESTED: 'EGRESS_REQUESTED',
-  EGRESS_CHECK: 'EGRESS_CHECK', EGRESS_VERIFIED: 'EGRESS_VERIFIED',
-  SESSION_STARTED: 'SESSION_STARTED', REQUEST_COMPLETED: 'REQUEST_COMPLETED',
-  TELEMETRY_SAVED: 'TELEMETRY_SAVED', SESSION_FINALIZED: 'SESSION_FINALIZED',
-  CAMPAIGN_COMPLETED: 'CAMPAIGN_COMPLETED', CAMPAIGN_FAILED: 'CAMPAIGN_FAILED',
-  CAMPAIGN_CANCELLED: 'CAMPAIGN_CANCELLED',
-  // 10-stage failure-point pipeline
-  RECEIVED: 'RECEIVED', VALIDATED: 'VALIDATED', QUEUED: 'QUEUED',
-  CONNECTION: 'CONNECTION', TARGET_REQUEST: 'TARGET_REQUEST',
-  RESPONSE: 'RESPONSE', TELEMETRY: 'TELEMETRY',
-  ANALYTICS_OBSERVATION: 'ANALYTICS_OBSERVATION', FINALIZED: 'FINALIZED',
-  RECOVERY_ATTEMPTED: 'RECOVERY_ATTEMPTED', RECOVERY_SUCCEEDED: 'RECOVERY_SUCCEEDED',
+  // Request lifecycle (per-session):
+  // REQUEST_RECEIVED → VALIDATED → EGRESS_CHECK → EGRESS_VERIFIED →
+  // COUNTRY_MATCH → QUEUED → CONNECTION → TARGET_REQUEST → RESPONSE →
+  // TELEMETRY → FINALIZED
+  REQUEST_RECEIVED: 'REQUEST_RECEIVED',
+  VALIDATED: 'VALIDATED',
+  EGRESS_CHECK: 'EGRESS_CHECK',
+  EGRESS_VERIFIED: 'EGRESS_VERIFIED',
+  COUNTRY_MATCH: 'COUNTRY_MATCH',
+  QUEUED: 'QUEUED',
+  CONNECTION: 'CONNECTION',
+  TARGET_REQUEST: 'TARGET_REQUEST',
+  RESPONSE: 'RESPONSE',
+  TELEMETRY: 'TELEMETRY',
+  FINALIZED: 'FINALIZED',
+  // Request outcome (structured log markers):
+  REQUEST_COMPLETED: 'REQUEST_COMPLETED',
+  REQUEST_UNVERIFIED: 'REQUEST_UNVERIFIED',
+  REQUEST_FAILED: 'REQUEST_FAILED',
+  ANALYTICS_OBSERVATION: 'ANALYTICS_OBSERVATION',
+  RECOVERY_ATTEMPTED: 'RECOVERY_ATTEMPTED',
+  RECOVERY_SUCCEEDED: 'RECOVERY_SUCCEEDED',
   RECOVERY_FAILED: 'RECOVERY_FAILED',
+  // Legacy aliases (kept for backward compatibility):
+  RECEIVED: 'RECEIVED',
+  RECEIVED_ALIAS: 'RECEIVED',
+  SESSION_STARTED: 'SESSION_STARTED',
+  TELEMETRY_SAVED: 'TELEMETRY_SAVED',
+  SESSION_FINALIZED: 'SESSION_FINALIZED',
+  CAMPAIGN_COMPLETED: 'CAMPAIGN_COMPLETED',
+  CAMPAIGN_FAILED: 'CAMPAIGN_FAILED',
+  CAMPAIGN_CANCELLED: 'CAMPAIGN_CANCELLED',
+  COMMAND_RECEIVED: 'COMMAND_RECEIVED',
+  CAMPAIGN_CREATED: 'CAMPAIGN_CREATED',
+  CONFIG_VALIDATED: 'CONFIG_VALIDATED',
+  GROUP_RESOLVED: 'GROUP_RESOLVED',
+  COUNTRIES_ASSIGNED: 'COUNTRIES_ASSIGNED',
+  EGRESS_REQUESTED: 'EGRESS_REQUESTED',
+  SESSION_STARTED_ALIAS: 'SESSION_STARTED',
 });
 
 const RECOVERY_MAX = 3;
@@ -55,7 +79,7 @@ function logStage(campaignId, stage, detail = {}, operator = null) {
   audit('system', operator, stage, 'traffic_loop_campaigns', campaignId, { after: detail });
 }
 
-function pipeLog(campaignId, sessionId, requestId, stage, status = 'OK', detail = {}) {
+export function pipeLog(campaignId, sessionId, requestId, stage, status = 'OK', detail = {}) {
   const safe = {}; for (const k of Object.keys(detail)) safe[k] = detail[k];
   db.prepare(`INSERT INTO traffic_loop_pipeline_log
     (campaign_id, session_id, request_id, stage, status, duration_ms, error_code, error_message, retry_count, detail)
@@ -63,6 +87,29 @@ function pipeLog(campaignId, sessionId, requestId, stage, status = 'OK', detail 
     .run(campaignId, sessionId || null, requestId, stage, status, detail.duration_ms ?? null, detail.error_code || null, detail.error || null, detail.retry_count ?? 0, JSON.stringify(safe));
   console.log(`[tl:${requestId}] ${campaignId} ${stage} ${status}`);
   audit('system', null, stage, 'traffic_loop_campaigns', campaignId, { after: { ...safe, sessionId, requestId } });
+}
+
+// Structured outcome logging — emits console markers like COUNTRY_MATCH PASS,
+// REQUEST_COMPLETED, REQUEST_UNVERIFIED, REQUEST_FAILED alongside pipeline entries.
+export function logOutcome(campaignId, sessionId, requestId, marker, detail = {}) {
+  const line = `[traffic-loop] ${marker} ${campaignId} sid=${sessionId || '-'} req=${requestId} ${JSON.stringify(detail)}`;
+  console.log(line);
+  if (marker === 'COUNTRY_MATCH PASS' || marker === 'COUNTRY_MATCH FAIL') {
+    pipeLog(campaignId, sessionId, requestId, STAGE.COUNTRY_MATCH,
+      marker === 'COUNTRY_MATCH PASS' ? 'OK' : 'WARNING',
+      { country_match: marker === 'COUNTRY_MATCH PASS', ...detail });
+  } else if (marker === 'REQUEST_COMPLETED') {
+    pipeLog(campaignId, sessionId, requestId, STAGE.REQUEST_COMPLETED, 'OK', detail);
+    pipeLog(campaignId, sessionId, requestId, STAGE.FINALIZED, 'OK', detail);
+  } else if (marker === 'REQUEST_UNVERIFIED') {
+    pipeLog(campaignId, sessionId, requestId, STAGE.REQUEST_UNVERIFIED, 'WARNING', detail);
+    pipeLog(campaignId, sessionId, requestId, STAGE.FINALIZED, 'WARNING', detail);
+  } else if (marker === 'REQUEST_FAILED') {
+    pipeLog(campaignId, sessionId, requestId, STAGE.REQUEST_FAILED, 'FAILED', detail);
+    pipeLog(campaignId, sessionId, requestId, STAGE.FINALIZED, 'FAILED', detail);
+  } else {
+    pipeLog(campaignId, sessionId, requestId, 'LIFECYCLE', 'OK', { marker, ...detail });
+  }
 }
 
 // ============================================================
@@ -126,9 +173,10 @@ async function runCampaign(campaignId, operator, signal) {
 
   const requestId = generateRequestId();
 
-  // PIPELINE: RECEIVED
-  pipeLog(campaignId, null, requestId, STAGE.RECEIVED, 'OK', { url: c.url, userId: c.user_id });
-  logStage(campaignId, STAGE.COMMAND_RECEIVED, { url: c.url, groupId: c.country_group, userId: c.user_id }, operator);
+  // PIPELINE: REQUEST_RECEIVED
+  pipeLog(campaignId, null, requestId, STAGE.REQUEST_RECEIVED, 'OK', { url: c.url, userId: c.user_id });
+  logStage(campaignId, STAGE.REQUEST_RECEIVED, { url: c.url, groupId: c.country_group, userId: c.user_id }, operator);
+  console.log(`[traffic-loop] REQUEST_RECEIVED ${campaignId} req=${requestId} url=${c.url}`);
 
   const requested = JSON.parse(c.requested_countries || '[]');
   logStage(campaignId, STAGE.GROUP_RESOLVED, { groupId: c.country_group, countries: requested }, operator);
@@ -136,11 +184,14 @@ async function runCampaign(campaignId, operator, signal) {
   // PIPELINE: VALIDATED
   pipeLog(campaignId, null, requestId, STAGE.VALIDATED, 'OK', { durationSeconds: c.duration_seconds, sessionsPerCountry: c.sessions_per_country, autoRoll: !!c.auto_roll, countries: requested });
 
-  // EGRESS
-  pipeLog(campaignId, null, requestId, STAGE.EGRESS_CHECK, 'OK', {});
+  // PIPELINE: EGRESS_CHECK (initiated — detection in progress, no result yet)
+  pipeLog(campaignId, null, requestId, STAGE.EGRESS_CHECK, 'INITIATED', { url: c.url });
   const egress = await EgressProvider.detect();
   const geo = await EgressProvider.geo(egress.ip);
-  pipeLog(campaignId, null, requestId, STAGE.EGRESS_CHECK, geo.country ? 'OK' : 'FAILED', { ip: egress.ip, country: geo.country, countryName: geo.countryName, source: geo.source, error: geo.error });
+
+  // PIPELINE: EGRESS_VERIFIED (actual result — IP/country never modified to satisfy campaign)
+  pipeLog(campaignId, null, requestId, STAGE.EGRESS_VERIFIED, geo.country ? 'OK' : 'FAILED',
+    { ip: egress.ip, country: geo.country, countryName: geo.countryName, source: geo.source, error: geo.error });
   logStage(campaignId, STAGE.EGRESS_VERIFIED, { ip: egress.ip, country: geo.country, countryName: geo.countryName, source: geo.source }, operator);
 
   db.prepare('UPDATE traffic_loop_campaigns SET status=\'RUNNING\', started_at=datetime(\'now\'), egress_ip=?, egress_country=?, egress_source=? WHERE id=?')
@@ -151,14 +202,15 @@ async function runCampaign(campaignId, operator, signal) {
   const start = Date.now();
   const STATION_IDS = stations.stationIds();
   const perCountry = {};
-  let totalStarted = 0, totalCompleted = 0, totalFailed = 0, totalUnverified = 0, totalCancelled = 0;
+  let totalDispatched = 0, totalStarted = 0, totalVerifiedCompleted = 0, totalHttpCompleted = 0,
+    totalFailed = 0, totalUnverified = 0, totalCancelled = 0;
   let durSum = 0, durN = 0;
   const statusCounts = {};
   const recoveries = new Map();
 
   for (const country of requested) {
     const countryAvailable = !!geo.country && geo.country === country;
-    perCountry[country] = { requested: sessionCount, available: countryAvailable, started: 0, completed: 0, failed: 0, unverified: 0, skipped: 0, avg_request_duration_ms: null, _sum: 0, _n: 0 };
+    perCountry[country] = { requested: sessionCount, available: countryAvailable, dispatched: 0, started: 0, completed: 0, http_completed: 0, verified_completed: 0, failed: 0, unverified: 0, skipped: 0, cancelled: 0, avg_request_duration_ms: null, _sum: 0, _n: 0 };
 
     for (let i = 0; i < sessionCount; i++) {
       if (signal.aborted) {
@@ -167,16 +219,18 @@ async function runCampaign(campaignId, operator, signal) {
         return;
       }
       if (Date.now() - start > durationMs) {
+        totalDispatched++;
         const sid = 'tls_' + randomUUID().split('-')[0];
         db.prepare('INSERT INTO traffic_loop_sessions (id, campaign_id, country, station, status, verified, egress_ip, egress_country, country_available, error_code) VALUES (?,?,?,?, \'CANCELLED\', 0, ?, ?, ?, ?)').run(sid, campaignId, country, STATION_IDS[0], egress.ip || null, geo.country || null, countryAvailable ? 1 : 0, ERR.INTERNAL_ERROR);
         pipeLog(campaignId, sid, requestId, STAGE.FINALIZED, 'WARNING', { status: 'CANCELLED', reason: 'duration budget exhausted' });
-        totalCancelled++; perCountry[country].skipped++;
+        totalCancelled++; perCountry[country].cancelled++; perCountry[country].skipped++;
         continue;
       }
 
       const stationId = STATION_IDS[i % STATION_IDS.length];
       const st = stations.getStation(stationId);
       if (st.circuitOpenUntil > Date.now()) {
+        totalDispatched++;
         const sid = 'tls_' + randomUUID().split('-')[0];
         db.prepare('INSERT INTO traffic_loop_sessions (id, campaign_id, country, station, status, verified, egress_ip, egress_country, country_available, error_code, failure_reason) VALUES (?,?,?,?, \'SKIPPED\', 0, ?, ?, ?, ?, ?)').run(sid, campaignId, country, stationId, egress.ip || null, geo.country || null, countryAvailable ? 1 : 0, ERR.EGRESS_UNAVAILABLE, 'station circuit open');
         pipeLog(campaignId, sid, requestId, STAGE.QUEUED, 'WARNING', { country, station: stationId, reason: 'circuit open' });
@@ -186,11 +240,20 @@ async function runCampaign(campaignId, operator, signal) {
       st.state = 'RUNNING';
       if (!st.startedAt) st.startedAt = new Date().toISOString();
 
+      totalDispatched++;
       const sid = 'tls_' + randomUUID().split('-')[0];
       db.prepare('INSERT INTO traffic_loop_sessions (id, campaign_id, country, station, status, verified, egress_ip, egress_country, country_available, started_at, error_code) VALUES (?,?,?,?, \'STARTED\', 0, ?, ?, ?, datetime(\'now\'), ?)').run(sid, campaignId, country, stationId, egress.ip || null, geo.country || null, countryAvailable ? 1 : 0, countryAvailable ? null : ERR.EGRESS_MISMATCH);
+
+      // PIPELINE: COUNTRY_MATCH — strict verification, actual egress never spoofed
+      if (countryAvailable) {
+        logOutcome(campaignId, sid, requestId, 'COUNTRY_MATCH PASS', { requested_country: country, actual_country: geo.country, egress_ip: egress.ip, country_match: true });
+      } else {
+        logOutcome(campaignId, sid, requestId, 'COUNTRY_MATCH FAIL', { requested_country: country, actual_country: geo.country, egress_ip: egress.ip, country_match: false });
+      }
+
       pipeLog(campaignId, sid, requestId, STAGE.QUEUED, 'OK', { country, station: stationId, queuePosition: i });
       pipeLog(campaignId, sid, requestId, STAGE.CONNECTION, 'OK', { station: stationId, country, countryAvailable });
-      totalStarted++; perCountry[country].started++;
+      totalStarted++; perCountry[country].started++; perCountry[country].dispatched++;
 
       // THE REAL PROBE
       const t0 = Date.now();
@@ -229,7 +292,11 @@ async function runCampaign(campaignId, operator, signal) {
       durSum += dur; durN++; perCountry[country]._sum = (perCountry[country]._sum || 0) + dur; perCountry[country]._n = (perCountry[country]._n || 0) + 1;
 
       if (!errMsg) {
-        if (httpStatus >= 200 && httpStatus < 400) { verified = countryAvailable; if (!countryAvailable) errorCode = ERR.EGRESS_MISMATCH; }
+        if (httpStatus >= 200 && httpStatus < 400) {
+          totalHttpCompleted++; perCountry[country].http_completed++;
+          if (countryAvailable) { verified = true; }
+          else { errorCode = ERR.EGRESS_MISMATCH; }
+        }
         else if (httpStatus >= 400 && httpStatus < 500) { errorCode = ERR.HTTP_4XX; }
         else if (httpStatus >= 500) { errorCode = ERR.HTTP_5XX; }
         else { errorCode = ERR.INTERNAL_ERROR; }
@@ -259,18 +326,34 @@ async function runCampaign(campaignId, operator, signal) {
       db.prepare('UPDATE traffic_loop_sessions SET status=?, verified=?, http_status=?, request_duration_ms=?, bytes_received=?, error_code=?, failure_reason=?, finished_at=datetime(\'now\') WHERE id=?')
         .run(finalStatus, verified ? 1 : 0, httpStatus, dur, bytes, errorCode, errMsg, sid);
 
-      pipeLog(campaignId, sid, requestId, STAGE.TELEMETRY, 'OK', { verified, httpStatus, errorCode, bytes, duration_ms: dur });
-      pipeLog(campaignId, sid, requestId, STAGE.FINALIZED, finalStatus === 'COMPLETED' ? 'OK' : finalStatus === 'FAILED' ? 'FAILED' : 'WARNING', { status: finalStatus, httpStatus, verified, errorCode });
+      pipeLog(campaignId, sid, requestId, STAGE.TELEMETRY, 'OK',
+        { verified, http_completed: !errMsg && httpStatus >= 200 && httpStatus < 400, country_match: countryAvailable, httpStatus, errorCode, bytes, duration_ms: dur });
+
+      // Structured outcome logging — each path emits a unique terminal marker
+      // HTTP 200 alone is transport success, NOT a verified completion
+      if (finalStatus === 'COMPLETED') {
+        logOutcome(campaignId, sid, requestId, 'REQUEST_COMPLETED',
+          { country, httpStatus, verified, country_match: countryAvailable, egress_ip: egress.ip, egress_country: geo.country, duration_ms: dur });
+      } else if (finalStatus === 'UNVERIFIED') {
+        logOutcome(campaignId, sid, requestId, 'REQUEST_UNVERIFIED',
+          { country, requested_country: country, actual_country: geo.country, httpStatus, verified: false, country_match: false, egress_ip: egress.ip, duration_ms: dur, error_code: errorCode, reason: 'egress_country_mismatch' });
+      } else {
+        logOutcome(campaignId, sid, requestId, 'REQUEST_FAILED',
+          { country, httpStatus, verified: false, country_match: countryAvailable, egress_ip: egress.ip, duration_ms: dur, error_code: errorCode, error: errMsg });
+      }
 
       // Station circuit breaker
       if (verified) { st.sessionsRun++; st.consecutiveFailures = 0; st.lastVerifiedAt = new Date().toISOString(); st.state = 'IDLE'; }
       else { st.sessionsFailed++; st.consecutiveFailures++; st.lastError = errorCode || errMsg || 'unknown'; st.state = st.consecutiveFailures >= 5 ? 'CIRCUIT_OPEN' : 'IDLE'; if (st.consecutiveFailures >= 5) st.circuitOpenUntil = Date.now() + 60_000; }
 
-      if (finalStatus === 'COMPLETED') totalCompleted++;
+      if (finalStatus === 'COMPLETED') totalVerifiedCompleted++;
       else if (finalStatus === 'FAILED') totalFailed++;
       else totalUnverified++;
       if (httpStatus != null) statusCounts[httpStatus] = (statusCounts[httpStatus] || 0) + 1;
+      // per-country: maintain 'completed'/'failed'/'unverified' for backward compatibility
       perCountry[country][finalStatus === 'COMPLETED' ? 'completed' : finalStatus === 'FAILED' ? 'failed' : 'unverified']++;
+      // per-country: new separated metrics — verified_completed is a copy of 'completed' for clarity
+      if (finalStatus === 'COMPLETED') perCountry[country].verified_completed++;
 
       await wait(250);
     }
@@ -287,22 +370,26 @@ async function runCampaign(campaignId, operator, signal) {
   pipeLog(campaignId, null, requestId, STAGE.ANALYTICS_OBSERVATION, ga4.status === 'OK' ? 'OK' : 'WARNING', { ga4Status: ga4.status, ga4Detail: ga4.detail });
 
   const summary = {
-    requested: requested.length * sessionCount, started: totalStarted, completed: totalCompleted,
+    requested: requested.length * sessionCount, dispatched: totalDispatched, started: totalStarted,
+    http_completed: totalHttpCompleted, verified_completed: totalVerifiedCompleted,
+    completed: totalVerifiedCompleted, // backward-compatible alias for verified_completed
     failed: totalFailed, unverified: totalUnverified, cancelled: totalCancelled,
     recovered: Array.from(recoveries.values()).filter(a => a > 0).length,
-    success_rate: totalStarted ? totalCompleted / totalStarted : 0,
+    success_rate: totalDispatched ? totalVerifiedCompleted / totalDispatched : 0,
     failure_rate: totalStarted ? totalFailed / totalStarted : 0,
     actual_egress_ip: egress.ip, actual_egress_country: geo.country,
     avg_request_duration_ms: durN ? Math.round(durSum / durN) : null, http_status_counts: statusCounts, per_country: perCountry,
   };
 
   db.prepare('UPDATE traffic_loop_campaigns SET status=\'COMPLETED\', finished_at=datetime(\'now\'), summary=? WHERE id=?').run(JSON.stringify(summary), campaignId);
-  logStage(campaignId, STAGE.CAMPAIGN_COMPLETED, summary, operator);
-  pipeLog(campaignId, null, requestId, STAGE.CAMPAIGN_COMPLETED, 'OK', { totalStarted, totalCompleted, totalFailed, totalUnverified, recovered: summary.recovered, requestId });
+  console.log(`[traffic-loop] CAMPAIGN_COMPLETED ${campaignId} — processing cycle finished (NOT target achievement). dispatched=${summary.dispatched} verified_completed=${summary.verified_completed}`);
+  logStage(campaignId, STAGE.CAMPAIGN_COMPLETED, { ...summary, cycle_finished: true, target_achieved: totalVerifiedCompleted >= (requested.length * sessionCount) }, operator);
+  pipeLog(campaignId, null, requestId, STAGE.CAMPAIGN_COMPLETED, 'OK',
+    { dispatched: summary.dispatched, started: summary.started, http_completed: summary.http_completed, verified_completed: totalVerifiedCompleted, failed: totalFailed, unverified: totalUnverified, cancelled: totalCancelled, recovered: summary.recovered, requestId, cycle_finished: true });
 
-  // AUTO-ROLL
+  // AUTO-ROLL — only if NO verified completed sessions (country/target never matched)
   const autoRollEnabled = c.auto_roll;
-  if (autoRollEnabled && totalCompleted === 0) {
+  if (autoRollEnabled && totalVerifiedCompleted === 0) {
     const retryCount = (c.auto_roll_retry_count || 0) + 1;
     db.prepare('UPDATE traffic_loop_campaigns SET auto_roll_retry_count=? WHERE id=?').run(retryCount, campaignId);
     if (retryCount < AUTO_ROLL_RETRY_LIMIT) {
@@ -326,7 +413,7 @@ export function getCampaignDiagnostic(campaignId) {
   const pipeline = db.prepare('SELECT * FROM traffic_loop_pipeline_log WHERE campaign_id = ? ORDER BY id ASC').all(campaignId);
   const recoveries = db.prepare('SELECT * FROM traffic_loop_session_recovery WHERE campaign_id = ? ORDER BY id ASC').all(campaignId);
 
-  const stageTree = ['RECEIVED', 'VALIDATED', 'QUEUED', 'EGRESS_CHECK', 'CONNECTION', 'TARGET_REQUEST', 'RESPONSE', 'TELEMETRY', 'ANALYTICS_OBSERVATION', 'FINALIZED'];
+  const stageTree = ['REQUEST_RECEIVED', 'VALIDATED', 'EGRESS_CHECK', 'EGRESS_VERIFIED', 'COUNTRY_MATCH', 'QUEUED', 'CONNECTION', 'TARGET_REQUEST', 'RESPONSE', 'TELEMETRY', 'REQUEST_COMPLETED', 'REQUEST_UNVERIFIED', 'REQUEST_FAILED', 'FINALIZED', 'ANALYTICS_OBSERVATION'];
   const pipelineStages = {};
   for (const stage of stageTree) {
     const entries = pipeline.filter(p => p.stage === stage);
@@ -345,7 +432,7 @@ export function getCampaignDiagnostic(campaignId) {
   return {
     campaignId, url: c.url, status: c.status, createdAt: c.created_at, startedAt: c.started_at, finishedAt: c.finished_at,
     egressIp: c.egress_ip, egressCountry: c.egress_country, pipeline: pipelineStages,
-    summary: { total: sessions.length, completed: sessions.filter(s => s.status === 'COMPLETED').length, failed: sessions.filter(s => s.status === 'FAILED').length, unverified: sessions.filter(s => s.status === 'UNVERIFIED').length, cancelled: sessions.filter(s => s.status === 'CANCELLED').length, recovered: recoveries.filter(r => r.status === 'RESOLVED').length, recoveryFailed: recoveries.filter(r => r.status === 'FAILED').length },
+    summary: { total: sessions.length, dispatched: sessions.filter(s => s.status !== 'SKIPPED').length, started: sessions.filter(s => s.status === 'STARTED' || s.status === 'COMPLETED' || s.status === 'FAILED' || s.status === 'UNVERIFIED').length, http_completed: sessions.filter(s => s.http_status >= 200 && s.http_status < 400).length, verified_completed: sessions.filter(s => s.status === 'COMPLETED').length, completed: sessions.filter(s => s.status === 'COMPLETED').length, failed: sessions.filter(s => s.status === 'FAILED').length, unverified: sessions.filter(s => s.status === 'UNVERIFIED').length, cancelled: sessions.filter(s => s.status === 'CANCELLED').length, recovered: recoveries.filter(r => r.status === 'RESOLVED').length, recoveryFailed: recoveries.filter(r => r.status === 'FAILED').length },
     stations: stations.listStations().map(s => ({ id: s.id, sessionsRun: s.sessionsRun, sessionsFailed: s.sessionsFailed, state: s.state })),
     ga4: GA4Provider.status(campaignId),
     sessions: sessionDiagnostics,
@@ -355,9 +442,9 @@ export function getCampaignDiagnostic(campaignId) {
 export function getCampaignLiveStatus(campaignId) {
   const c = db.prepare('SELECT * FROM traffic_loop_campaigns WHERE id = ?').get(campaignId);
   if (!c) return null;
-  const sessions = db.prepare('SELECT status, verified, station, error_code FROM traffic_loop_sessions WHERE campaign_id = ?').all(campaignId);
+  const sessions = db.prepare('SELECT status, verified, http_status, station, error_code FROM traffic_loop_sessions WHERE campaign_id = ?').all(campaignId);
   const pipeline = db.prepare('SELECT stage, status, error_code, created_at FROM traffic_loop_pipeline_log WHERE campaign_id = ? ORDER BY id DESC LIMIT 50').all(campaignId);
-  const sum = { total: sessions.length, completed: sessions.filter(s => s.status === 'COMPLETED').length, failed: sessions.filter(s => s.status === 'FAILED').length, unverified: sessions.filter(s => s.status === 'UNVERIFIED').length, pending: sessions.filter(s => s.status === 'STARTED').length };
+  const sum = { total: sessions.length, dispatched: sessions.filter(s => s.status !== 'SKIPPED').length, started: sessions.filter(s => s.status !== 'SKIPPED' && s.status !== 'CANCELLED').length, http_completed: sessions.filter(s => s.http_status >= 200 && s.http_status < 400).length, verified_completed: sessions.filter(s => s.status === 'COMPLETED').length, completed: sessions.filter(s => s.status === 'COMPLETED').length, failed: sessions.filter(s => s.status === 'FAILED').length, unverified: sessions.filter(s => s.status === 'UNVERIFIED').length, cancelled: sessions.filter(s => s.status === 'CANCELLED').length, pending: sessions.filter(s => s.status === 'STARTED').length };
   const lastError = pipeline.find(p => p.status !== 'OK');
   return { campaignId, status: c.status, currentStage: pipeline[0]?.stage || null, lastError: lastError ? { stage: lastError.stage, code: lastError.error_code, at: lastError.created_at } : null, summary: sum, stations: stations.listStations(), ga4: GA4Provider.status(campaignId), elapsedMs: c.started_at ? Date.now() - new Date(c.started_at.endsWith('Z') ? c.started_at : c.started_at + 'Z').getTime() : null, durationMs: c.duration_seconds * 1000 };
 }
@@ -367,7 +454,7 @@ export function reconcilePushPack(campaignId) {
   if (!c) return null;
   const sessions = db.prepare('SELECT status FROM traffic_loop_sessions WHERE campaign_id = ?').all(campaignId);
   const totalRequested = JSON.parse(c.requested_countries || '[]').length * c.sessions_per_country;
-  const counts = { started: sessions.filter(s => s.status === 'STARTED').length, completed: sessions.filter(s => s.status === 'COMPLETED').length, failed: sessions.filter(s => s.status === 'FAILED').length, unverified: sessions.filter(s => s.status === 'UNVERIFIED').length, cancelled: sessions.filter(s => s.status === 'CANCELLED').length, total: sessions.length };
+  const counts = { dispatched: sessions.filter(s => s.status !== 'SKIPPED').length, started: sessions.filter(s => s.status === 'STARTED').length, completed: sessions.filter(s => s.status === 'COMPLETED').length, failed: sessions.filter(s => s.status === 'FAILED').length, unverified: sessions.filter(s => s.status === 'UNVERIFIED').length, cancelled: sessions.filter(s => s.status === 'CANCELLED').length, total: sessions.length };
   const accounted = counts.started + counts.completed + counts.failed + counts.unverified + counts.cancelled;
   return { campaignId, requested: totalRequested, accounted, pending: Math.max(0, totalRequested - accounted), counts, reconciled: accounted === totalRequested };
 }

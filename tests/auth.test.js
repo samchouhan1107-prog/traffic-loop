@@ -1,6 +1,7 @@
 // Auth tests
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { unlinkSync } from 'node:fs';
 
 // Set test environment
 process.env.DB_PATH = './server/database/test-auth.sqlite';
@@ -13,7 +14,7 @@ migrate();
 const auth = await import('../server/middleware/auth.js');
 
 describe('Auth', () => {
-  after(() => { db.close(); try { require('node:fs').unlinkSync('./server/database/test-auth.sqlite'); } catch {} });
+  after(() => { db.close(); for (const f of ['test-auth.sqlite', 'test-auth.sqlite-wal', 'test-auth.sqlite-shm']) { try { unlinkSync('./server/database/' + f); } catch {} } });
 
   it('register creates user', () => {
     const r = auth.register({ email: 'test@example.com', password: 'password1234' });

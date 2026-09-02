@@ -103,6 +103,18 @@ CREATE TABLE IF NOT EXISTS traffic_loop_ga4_hits (
   received_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS traffic_loop_ga4_observations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  campaign_id TEXT NOT NULL REFERENCES traffic_loop_campaigns(id) ON DELETE CASCADE,
+  observation_type TEXT NOT NULL DEFAULT 'realtime',
+  events_sent INTEGER NOT NULL DEFAULT 0,
+  events_observed INTEGER NOT NULL DEFAULT 0,
+  observation_json TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  error_message TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS traffic_loop_config (
   key TEXT PRIMARY KEY,
   value TEXT
@@ -225,6 +237,7 @@ CREATE INDEX IF NOT EXISTS idx_tl_pipeline_campaign ON traffic_loop_pipeline_log
 CREATE INDEX IF NOT EXISTS idx_tl_pipeline_session ON traffic_loop_pipeline_log(session_id);
 CREATE INDEX IF NOT EXISTS idx_tl_recovery_session ON traffic_loop_session_recovery(session_id);
 CREATE INDEX IF NOT EXISTS idx_tl_ga4_campaign ON traffic_loop_ga4_hits(campaign_id);
+CREATE INDEX IF NOT EXISTS idx_tl_ga4_obs_campaign ON traffic_loop_ga4_observations(campaign_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_promo_alloc_user ON promo_allocations(user_id);
 CREATE INDEX IF NOT EXISTS idx_streak_user ON login_streaks(user_id);

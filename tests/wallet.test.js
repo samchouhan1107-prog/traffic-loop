@@ -1,6 +1,7 @@
 // Wallet tests
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { unlinkSync } from 'node:fs';
 
 process.env.DB_PATH = './server/database/test-wallet.sqlite';
 process.env.AUTH_SECRET = 'test-secret-key-that-is-long-enough-32chars';
@@ -15,7 +16,7 @@ const walletService = await import('../server/services/walletService.js');
 describe('Wallet', () => {
   let userId;
   before(() => { const r = auth.register({ email: 'wallet-test@example.com', password: 'password1234' }); userId = r.userId; });
-  after(() => { db.close(); try { require('node:fs').unlinkSync('./server/database/test-wallet.sqlite'); } catch {} });
+  after(() => { db.close(); for (const f of ['test-wallet.sqlite', 'test-wallet.sqlite-wal', 'test-wallet.sqlite-shm']) { try { unlinkSync('./server/database/' + f); } catch {} } });
 
   it('initial balance is 0', () => {
     const w = walletService.getWallet(userId);

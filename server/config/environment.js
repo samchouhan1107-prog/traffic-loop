@@ -34,7 +34,13 @@ export const config = Object.freeze({
   dbPath: val('DB_PATH', './server/database/traffic-loop.sqlite'),
 
   smtp: { host: val('SMTP_HOST', ''), port: num('SMTP_PORT', 587), user: val('SMTP_USER', ''), pass: val('SMTP_PASS', ''), from: val('MAIL_FROM', 'no-reply@trafficloop.example') },
-  ga4: { measurementId: val('GA4_MEASUREMENT_ID', ''), apiSecret: val('GA4_API_SECRET', '') },
+  ga4: {
+    measurementId: val('GA4_MEASUREMENT_ID', ''),
+    apiSecret: val('GA4_API_SECRET', ''),
+    propertyId: val('GA4_PROPERTY_ID', ''),
+    serviceAccountJson: val('GA4_SA_KEY', ''),
+    serviceAccountFile: val('GOOGLE_APPLICATION_CREDENTIALS', ''),
+  },
   google: { clientId: val('GOOGLE_CLIENT_ID', ''), clientSecret: val('GOOGLE_CLIENT_SECRET', '') },
   whatsapp: { apiKey: val('WHATSAPP_API_KEY', '') },
   payment: {

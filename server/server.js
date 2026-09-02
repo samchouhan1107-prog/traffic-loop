@@ -108,8 +108,17 @@ async function dispatch(req, res) {
 
   // Static files
   if (req.method === 'GET') {
-    // Try client/dist first (production build), then root index.html
-    const candidates = [join(process.cwd(), 'client', 'dist', pathname === '/' ? '/index.html' : pathname), join(process.cwd(), pathname === '/' ? '/index.html' : pathname)];
+    const distDir = join(process.cwd(), 'client', 'dist');
+    // Vite `base` prefix (e.g. "/traffic-loop/") — strip it so dist-relative
+    // lookups resolve correctly.  The prefix lives in vite.config.js `base`.
+    const basePrefix = '/traffic-loop';
+    const distPath = pathname.startsWith(basePrefix)
+      ? pathname.slice(basePrefix.length) || '/'
+      : pathname;
+    const candidates = [
+      join(distDir, distPath === '/' ? '/index.html' : distPath),
+      join(process.cwd(), pathname === '/' ? '/index.html' : pathname),
+    ];
     for (const filePath of candidates) {
       if (existsSync(filePath) && extname(filePath)) {
         res.writeHead(200, { 'Content-Type': MIME[extname(filePath)] || 'application/octet-stream' });
@@ -117,8 +126,8 @@ async function dispatch(req, res) {
         return;
       }
     }
-    // SPA fallback
-    const spaIndex = join(process.cwd(), 'client', 'dist', 'index.html');
+    // SPA fallback — serve index.html for any unmatched route
+    const spaIndex = join(distDir, 'index.html');
     if (existsSync(spaIndex)) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(readFileSync(spaIndex)); return; }
     const rootIndex = join(process.cwd(), 'index.html');
     if (existsSync(rootIndex)) { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(readFileSync(rootIndex)); return; }
