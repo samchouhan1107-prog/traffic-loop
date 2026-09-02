@@ -39,13 +39,11 @@ jobs:
         working-directory: client
         run: npm run build
 
-      # SPA fallback: GitHub Pages has no server-side routing, so deep
-      # links like /dashboard, /campaigns, /login, /settings return 404.
-      # Serving a copy of index.html as 404.html lets the React Router
-      # pick up the real URL and render the correct route.
-      - name: Create SPA fallback (404.html)
-        run: cp client/dist/index.html client/dist/404.html
-
+      # SPA fallback: client/public/404.html is copied verbatim into dist/
+      # by Vite. It converts deep links (/traffic-loop/dashboard) into
+      # /traffic-loop/?/dashboard, which main.jsx restores to the real
+      # path before React Router mounts. Pages serves 404.html at the
+      # project root, making all client-side routes reachable by direct link.
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
