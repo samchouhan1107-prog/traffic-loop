@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <!-- Character encoding must be declared before any other content -->
+    <meta charset="UTF-8" />
+
+    <!-- Viewport: viewport-fit=cover supports notched/safe-area devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Theme & color-scheme: keeps browser chrome, form controls and
+         scrollbars consistent with the dark app theme (#0b0d12) -->
+    <meta name="theme-color" content="#0b0d12" />
+    <meta name="color-scheme" content="dark" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+
+    <!-- SEO metadata -->
+    <title>Traffic Loop</title>
+    <meta
+      name="description"
+      content="Traffic Loop — honest multi-country traffic probing with failure-point monitoring."
+    />
+
+    <!-- Open Graph (social sharing) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Traffic Loop" />
+    <meta property="og:title" content="Traffic Loop" />
+    <meta
+      property="og:description"
+      content="Honest multi-country traffic probing with failure-point monitoring."
+    />
+
+    <!-- Twitter card -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Traffic Loop" />
+    <meta
+      name="twitter:description"
+      content="Honest multi-country traffic probing with failure-point monitoring."
+    />
+  </head>
+  <body>
+    <!-- React root: the single mount point (see src/main.jsx) -->
+    <div id="root"></div>
+
+    <!-- Graceful fallback if JavaScript is disabled -->
+    <noscript>
+      <p style="font-family: system-ui, sans-serif; padding: 2rem; color: #e6e9f2;">
+        Traffic Loop requires JavaScript. Please enable it and reload the page.
+      </p>
+    </noscript>
+
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

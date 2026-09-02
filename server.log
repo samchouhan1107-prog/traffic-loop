@@ -1,0 +1,6 @@
+[db] migrations applied
+🚦 Traffic Loop on http://localhost:3000
+   Database: ./server/database/traffic-loop.sqlite
+   Promo Scheduler: starting...
+[promo-scheduler] started
+   Promo Scheduler: running (interval: 60000ms)

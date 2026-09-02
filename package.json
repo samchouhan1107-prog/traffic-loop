@@ -1,0 +1,25 @@
+{
+  "name": "traffic-loop",
+  "version": "1.0.0",
+  "description": "Traffic Loop — honest multi-country traffic probing platform with failure-point monitoring",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "node --watch server/server.js",
+    "start": "node server/server.js",
+    "client": "cd client && npm run dev",
+    "test": "node --test tests/*.test.js",
+    "migrate": "node server/database/migrate.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
